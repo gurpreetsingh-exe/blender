@@ -49,3 +49,6 @@ waveletNoiseTile.bin
 
 # testing environment
 /Testing
+
+# bin
+/bin

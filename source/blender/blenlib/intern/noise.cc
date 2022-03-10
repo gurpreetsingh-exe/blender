@@ -1739,6 +1739,52 @@ void voronoi_distance_to_edge(const float2 coord, const float randomness, float 
   *r_distance = minDistance;
 }
 
+void voronoi_smooth_distance_to_edge(const float2 coord,
+                                     const float smoothness,
+                                     const float randomness,
+                                     float *r_distance)
+{
+  const float2 cellPosition = math::floor(coord);
+  const float2 localPosition = coord - cellPosition;
+  const float smoothness_clamped = max_ff(smoothness, FLT_MIN);
+
+  float2 vectorToClosest = float2(0.0f, 0.0f);
+  float minDistance = 8.0f;
+  for (int j = -1; j <= 1; j++) {
+    for (int i = -1; i <= 1; i++) {
+      const float2 cellOffset = float2(i, j);
+      const float2 vectorToPoint = cellOffset +
+                                   hash_float_to_float2(cellPosition + cellOffset) * randomness -
+                                   localPosition;
+      const float distanceToPoint = math::dot(vectorToPoint, vectorToPoint);
+      if (distanceToPoint < minDistance) {
+        minDistance = distanceToPoint;
+        vectorToClosest = vectorToPoint;
+      }
+    }
+  }
+
+  minDistance = 8.0f;
+  for (int j = -2; j <= 2; j++) {
+    for (int i = -2; i <= 2; i++) {
+      const float2 cellOffset = float2(i, j);
+      const float2 vectorToPoint = cellOffset +
+                                   hash_float_to_float2(cellPosition + cellOffset) * randomness -
+                                   localPosition;
+      const float2 perpendicularToEdge = vectorToPoint - vectorToClosest;
+      if (math::dot(perpendicularToEdge, perpendicularToEdge) > 0.0001f) {
+        const float distanceToEdge = math::dot((vectorToClosest + vectorToPoint) / 2.0f,
+                                               math::normalize(perpendicularToEdge));
+        const float h = smoothstep(
+            0.0f, 1.0f, 0.5f + 0.5f * (minDistance - distanceToEdge) / smoothness_clamped);
+        float correctionFactor = smoothness * h * (1.0f - h);
+        minDistance = mix(minDistance, distanceToEdge, h) - correctionFactor;
+      }
+    }
+  }
+  *r_distance = minDistance;
+}
+
 void voronoi_n_sphere_radius(const float2 coord, const float randomness, float *r_radius)
 {
   const float2 cellPosition = math::floor(coord);
@@ -1989,6 +2035,56 @@ void voronoi_distance_to_edge(const float3 coord, const float randomness, float 
           const float distanceToEdge = math::dot((vectorToClosest + vectorToPoint) / 2.0f,
                                                  math::normalize(perpendicularToEdge));
           minDistance = std::min(minDistance, distanceToEdge);
+        }
+      }
+    }
+  }
+  *r_distance = minDistance;
+}
+
+void voronoi_smooth_distance_to_edge(const float3 coord,
+                                     const float smoothness,
+                                     const float randomness,
+                                     float *r_distance)
+{
+  const float3 cellPosition = math::floor(coord);
+  const float3 localPosition = coord - cellPosition;
+  const float smoothness_clamped = max_ff(smoothness, FLT_MIN);
+
+  float3 vectorToClosest = float3(0.0f, 0.0f, 0.0f);
+  float minDistance = 8.0f;
+  for (int k = -1; k <= 1; k++) {
+    for (int j = -1; j <= 1; j++) {
+      for (int i = -1; i <= 1; i++) {
+        const float3 cellOffset = float3(i, j, k);
+        const float3 vectorToPoint = cellOffset +
+                                    hash_float_to_float3(cellPosition + cellOffset) * randomness -
+                                    localPosition;
+        const float distanceToPoint = math::dot(vectorToPoint, vectorToPoint);
+        if (distanceToPoint < minDistance) {
+          minDistance = distanceToPoint;
+          vectorToClosest = vectorToPoint;
+        }
+      }
+    }
+  }
+
+  minDistance = 8.0f;
+  for (int k = -2; k <= 2; k++) {
+    for (int j = -2; j <= 2; j++) {
+      for (int i = -2; i <= 2; i++) {
+        const float3 cellOffset = float3(i, j, k);
+        const float3 vectorToPoint = cellOffset +
+                                    hash_float_to_float3(cellPosition + cellOffset) * randomness -
+                                    localPosition;
+        const float3 perpendicularToEdge = vectorToPoint - vectorToClosest;
+        if (math::dot(perpendicularToEdge, perpendicularToEdge) > 0.0001f) {
+          const float distanceToEdge = math::dot((vectorToClosest + vectorToPoint) / 2.0f,
+                                                math::normalize(perpendicularToEdge));
+          const float h = smoothstep(
+              0.0f, 1.0f, 0.5f + 0.5f * (minDistance - distanceToEdge) / smoothness_clamped);
+          float correctionFactor = smoothness * h * (1.0f - h);
+          minDistance = mix(minDistance, distanceToEdge, h) - correctionFactor;
         }
       }
     }
@@ -2266,6 +2362,60 @@ void voronoi_distance_to_edge(const float4 coord, const float randomness, float 
             const float distanceToEdge = math::dot((vectorToClosest + vectorToPoint) / 2.0f,
                                                    math::normalize(perpendicularToEdge));
             minDistance = std::min(minDistance, distanceToEdge);
+          }
+        }
+      }
+    }
+  }
+  *r_distance = minDistance;
+}
+
+void voronoi_smooth_distance_to_edge(const float4 coord,
+                                     const float smoothness,
+                                     const float randomness,
+                                     float *r_distance)
+{
+  const float4 cellPosition = math::floor(coord);
+  const float4 localPosition = coord - cellPosition;
+  const float smoothness_clamped = max_ff(smoothness, FLT_MIN);
+
+  float4 vectorToClosest = float4(0.0f, 0.0f, 0.0f, 0.0f);
+  float minDistance = 8.0f;
+  for (int u = -1; u <= 1; u++) {
+    for (int k = -1; k <= 1; k++) {
+      for (int j = -1; j <= 1; j++) {
+        for (int i = -1; i <= 1; i++) {
+          const float4 cellOffset = float4(i, j, k, u);
+          const float4 vectorToPoint = cellOffset +
+                                      hash_float_to_float4(cellPosition + cellOffset) * randomness -
+                                      localPosition;
+          const float distanceToPoint = math::dot(vectorToPoint, vectorToPoint);
+          if (distanceToPoint < minDistance) {
+            minDistance = distanceToPoint;
+            vectorToClosest = vectorToPoint;
+          }
+        }
+      }
+    }
+  }
+
+  minDistance = 8.0f;
+  for (int u = -2; u <= 2; u++) {
+    for (int k = -2; k <= 2; k++) {
+      for (int j = -2; j <= 2; j++) {
+        for (int i = -2; i <= 2; i++) {
+          const float4 cellOffset = float4(i, j, k, u);
+          const float4 vectorToPoint = cellOffset +
+                                      hash_float_to_float4(cellPosition + cellOffset) * randomness -
+                                      localPosition;
+          const float4 perpendicularToEdge = vectorToPoint - vectorToClosest;
+          if (math::dot(perpendicularToEdge, perpendicularToEdge) > 0.0001f) {
+            const float distanceToEdge = math::dot((vectorToClosest + vectorToPoint) / 2.0f,
+                                                  math::normalize(perpendicularToEdge));
+            const float h = smoothstep(
+                0.0f, 1.0f, 0.5f + 0.5f * (minDistance - distanceToEdge) / smoothness_clamped);
+            float correctionFactor = smoothness * h * (1.0f - h);
+            minDistance = mix(minDistance, distanceToEdge, h) - correctionFactor;
           }
         }
       }

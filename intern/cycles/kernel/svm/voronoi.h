@@ -363,6 +363,51 @@ ccl_device void voronoi_distance_to_edge_2d(float2 coord,
   *outDistance = minDistance;
 }
 
+ccl_device void voronoi_smooth_distance_to_edge_2d(float2 coord,
+                                                   float smoothness,
+                                                   float randomness,
+                                                   ccl_private float *outDistance)
+{
+  float2 cellPosition = floor(coord);
+  float2 localPosition = coord - cellPosition;
+
+  float2 vectorToClosest = make_float2(0.0f, 0.0f);
+  float minDistance = 8.0f;
+  for (int j = -1; j <= 1; j++) {
+    for (int i = -1; i <= 1; i++) {
+      float2 cellOffset = make_float2(i, j);
+      float2 vectorToPoint = cellOffset +
+                              hash_float2_to_float2(cellPosition + cellOffset) * randomness -
+                              localPosition;
+      float distanceToPoint = dot(vectorToPoint, vectorToPoint);
+      if (distanceToPoint < minDistance) {
+        minDistance = distanceToPoint;
+        vectorToClosest = vectorToPoint;
+      }
+    }
+  }
+
+  minDistance = 8.0f;
+  for (int j = -2; j <= 2; j++) {
+    for (int i = -2; i <= 2; i++) {
+      float2 cellOffset = make_float2(i, j);
+      float2 vectorToPoint = cellOffset +
+                              hash_float2_to_float2(cellPosition + cellOffset) * randomness -
+                              localPosition;
+      float2 perpendicularToEdge = vectorToPoint - vectorToClosest;
+      if (dot(perpendicularToEdge, perpendicularToEdge) > 0.0001f) {
+        float distanceToEdge = dot((vectorToClosest + vectorToPoint) / 2.0f,
+                                   normalize(perpendicularToEdge));
+        float h = smoothstep(
+            0.0f, 1.0f, 0.5f + 0.5f * (minDistance - distanceToEdge) / smoothness);
+        float correctionFactor = smoothness * h * (1.0f - h);
+        minDistance = mix(minDistance, distanceToEdge, h) - correctionFactor;
+      }
+    }
+  }
+  *outDistance = minDistance;
+}
+
 ccl_device void voronoi_n_sphere_radius_2d(float2 coord,
                                            float randomness,
                                            ccl_private float *outRadius)
@@ -591,6 +636,54 @@ ccl_device void voronoi_distance_to_edge_3d(float3 coord,
           float distanceToEdge = dot((vectorToClosest + vectorToPoint) / 2.0f,
                                      normalize(perpendicularToEdge));
           minDistance = min(minDistance, distanceToEdge);
+        }
+      }
+    }
+  }
+  *outDistance = minDistance;
+}
+
+ccl_device void voronoi_smooth_distance_to_edge_3d(float3 coord,
+                                                   float smoothness,
+                                                   float randomness,
+                                                   ccl_private float *outDistance)
+{
+  float3 cellPosition = floor(coord);
+  float3 localPosition = coord - cellPosition;
+
+  float3 vectorToClosest = make_float3(0.0f, 0.0f, 0.0f);
+  float minDistance = 8.0f;
+  for (int k = -1; k <= 1; k++) {
+    for (int j = -1; j <= 1; j++) {
+      for (int i = -1; i <= 1; i++) {
+        float3 cellOffset = make_float3(i, j, k);
+        float3 vectorToPoint = cellOffset +
+                                hash_float3_to_float3(cellPosition + cellOffset) * randomness -
+                                localPosition;
+        float distanceToPoint = dot(vectorToPoint, vectorToPoint);
+        if (distanceToPoint < minDistance) {
+          minDistance = distanceToPoint;
+          vectorToClosest = vectorToPoint;
+        }
+      }
+    }
+  }
+
+  minDistance = 8.0f;
+  for (int k = -2; k <= 2; k++) {
+    for (int j = -2; j <= 2; j++) {
+      for (int i = -2; i <= 2; i++) {
+        float3 cellOffset = make_float3(i, j, k);
+        float3 vectorToPoint = cellOffset +
+                                hash_float3_to_float3(cellPosition + cellOffset) * randomness -
+                                localPosition;
+        float3 perpendicularToEdge = vectorToPoint - vectorToClosest;
+        if (dot(perpendicularToEdge, perpendicularToEdge) > 0.0001f) {
+          float distanceToEdge = dot((vectorToClosest + vectorToPoint) / 2.0f,
+                                    normalize(perpendicularToEdge));
+          float h = smoothstep(0.0f, 1.0f, 0.5f + 0.5f * (minDistance - distanceToEdge) / smoothness);
+          float correctionFactor = smoothness * h * (1.0f - h);
+          minDistance = mix(minDistance, distanceToEdge, h) - correctionFactor;
         }
       }
     }
@@ -852,6 +945,58 @@ ccl_device void voronoi_distance_to_edge_4d(float4 coord,
   *outDistance = minDistance;
 }
 
+ccl_device void voronoi_smooth_distance_to_edge_4d(float4 coord,
+                                                   float smoothness,
+                                                   float randomness,
+                                                   ccl_private float *outDistance)
+{
+  float4 cellPosition = floor(coord);
+  float4 localPosition = coord - cellPosition;
+
+  float4 vectorToClosest = make_float4(0.0f, 0.0f, 0.0f, 0.0f);
+  float minDistance = 8.0f;
+  for (int u = -1; u <= 1; u++) {
+    for (int k = -1; k <= 1; k++) {
+      for (int j = -1; j <= 1; j++) {
+        for (int i = -1; i <= 1; i++) {
+          float4 cellOffset = make_float4(i, j, k, u);
+          float4 vectorToPoint = cellOffset +
+                                  hash_float4_to_float4(cellPosition + cellOffset) * randomness -
+                                  localPosition;
+          float distanceToPoint = dot(vectorToPoint, vectorToPoint);
+          if (distanceToPoint < minDistance) {
+            minDistance = distanceToPoint;
+            vectorToClosest = vectorToPoint;
+          }
+        }
+      }
+    }
+  }
+
+  minDistance = 8.0f;
+  for (int u = -2; u <= 2; u++) {
+    for (int k = -2; k <= 2; k++) {
+      for (int j = -2; j <= 2; j++) {
+        for (int i = -2; i <= 2; i++) {
+          float4 cellOffset = make_float4(i, j, k, u);
+          float4 vectorToPoint = cellOffset +
+                                  hash_float4_to_float4(cellPosition + cellOffset) * randomness -
+                                  localPosition;
+          float4 perpendicularToEdge = vectorToPoint - vectorToClosest;
+          if (dot(perpendicularToEdge, perpendicularToEdge) > 0.0001f) {
+            float distanceToEdge = dot((vectorToClosest + vectorToPoint) / 2.0f,
+                                      normalize(perpendicularToEdge));
+            float h = smoothstep(0.0f, 1.0f, 0.5f + 0.5f * (minDistance - distanceToEdge) / smoothness);
+            float correctionFactor = smoothness * h * (1.0f - h);
+            minDistance = mix(minDistance, distanceToEdge, h) - correctionFactor;
+          }
+        }
+      }
+    }
+  }
+  *outDistance = minDistance;
+}
+
 ccl_device void voronoi_n_sphere_radius_4d(float4 coord,
                                            float randomness,
                                            ccl_private float *outRadius)
@@ -1027,6 +1172,9 @@ ccl_device_noinline int svm_node_tex_voronoi(KernelGlobals kg,
         case NODE_VORONOI_DISTANCE_TO_EDGE:
           voronoi_distance_to_edge_2d(coord_2d, randomness, &distance_out);
           break;
+        case NODE_VORONOI_SMOOTH_DISTANCE_TO_EDGE:
+          voronoi_smooth_distance_to_edge_2d(coord_2d, smoothness, randomness, &distance_out);
+          break;
         case NODE_VORONOI_N_SPHERE_RADIUS:
           voronoi_n_sphere_radius_2d(coord_2d, randomness, &radius_out);
           break;
@@ -1072,6 +1220,9 @@ ccl_device_noinline int svm_node_tex_voronoi(KernelGlobals kg,
           break;
         case NODE_VORONOI_DISTANCE_TO_EDGE:
           voronoi_distance_to_edge_3d(coord, randomness, &distance_out);
+          break;
+        case NODE_VORONOI_SMOOTH_DISTANCE_TO_EDGE:
+          voronoi_smooth_distance_to_edge_3d(coord, smoothness, randomness, &distance_out);
           break;
         case NODE_VORONOI_N_SPHERE_RADIUS:
           voronoi_n_sphere_radius_3d(coord, randomness, &radius_out);
@@ -1119,6 +1270,9 @@ ccl_device_noinline int svm_node_tex_voronoi(KernelGlobals kg,
             break;
           case NODE_VORONOI_DISTANCE_TO_EDGE:
             voronoi_distance_to_edge_4d(coord_4d, randomness, &distance_out);
+            break;
+          case NODE_VORONOI_SMOOTH_DISTANCE_TO_EDGE:
+            voronoi_smooth_distance_to_edge_4d(coord_4d, smoothness, randomness, &distance_out);
             break;
           case NODE_VORONOI_N_SPHERE_RADIUS:
             voronoi_n_sphere_radius_4d(coord_4d, randomness, &radius_out);

@@ -334,6 +334,7 @@ void voronoi_f2(const float2 coord,
                 float3 *r_color,
                 float2 *r_position);
 void voronoi_distance_to_edge(const float2 coord, float randomness, float *r_distance);
+void voronoi_smooth_distance_to_edge(const float2 coord, float smoothness, float randomness, float *r_distance);
 void voronoi_n_sphere_radius(const float2 coord, float randomness, float *r_radius);
 
 void voronoi_f1(const float3 coord,
@@ -359,6 +360,7 @@ void voronoi_f2(const float3 coord,
                 float3 *r_color,
                 float3 *r_position);
 void voronoi_distance_to_edge(const float3 coord, float randomness, float *r_distance);
+void voronoi_smooth_distance_to_edge(const float3 coord, float smoothness, float randomness, float *r_distance);
 void voronoi_n_sphere_radius(const float3 coord, float randomness, float *r_radius);
 
 void voronoi_f1(const float4 coord,
@@ -384,6 +386,7 @@ void voronoi_f2(const float4 coord,
                 float3 *r_color,
                 float4 *r_position);
 void voronoi_distance_to_edge(const float4 coord, float randomness, float *r_distance);
+void voronoi_smooth_distance_to_edge(const float4 coord, float smoothness, float randomness, float *r_distance);
 void voronoi_n_sphere_radius(const float4 coord, float randomness, float *r_radius);
 
 /** \} */

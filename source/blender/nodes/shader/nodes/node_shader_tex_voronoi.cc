@@ -26,7 +26,9 @@ static void sh_node_tex_voronoi_declare(NodeDeclarationBuilder &b)
       .max(1.0f)
       .default_value(1.0f)
       .subtype(PROP_FACTOR)
-      .make_available([](bNode &node) { node_storage(node).feature = SHD_VORONOI_SMOOTH_F1; });
+      .make_available([](bNode &node) {
+        ELEM(node_storage(node).feature, SHD_VORONOI_SMOOTH_F1, SHD_VORONOI_SMOOTH_DISTANCE_TO_EDGE);
+      });
   b.add_input<decl::Float>(N_("Exponent"))
       .min(0.0f)
       .max(32.0f)
@@ -54,7 +56,7 @@ static void node_shader_buts_tex_voronoi(uiLayout *layout, bContext *UNUSED(C), 
   uiItemR(layout, ptr, "voronoi_dimensions", UI_ITEM_R_SPLIT_EMPTY_NAME, "", ICON_NONE);
   uiItemR(layout, ptr, "feature", UI_ITEM_R_SPLIT_EMPTY_NAME, "", ICON_NONE);
   int feature = RNA_enum_get(ptr, "feature");
-  if (!ELEM(feature, SHD_VORONOI_DISTANCE_TO_EDGE, SHD_VORONOI_N_SPHERE_RADIUS) &&
+  if (!ELEM(feature, SHD_VORONOI_DISTANCE_TO_EDGE, SHD_VORONOI_SMOOTH_DISTANCE_TO_EDGE, SHD_VORONOI_N_SPHERE_RADIUS) &&
       RNA_enum_get(ptr, "voronoi_dimensions") != 1) {
     uiItemR(layout, ptr, "distance", UI_ITEM_R_SPLIT_EMPTY_NAME, "", ICON_NONE);
   }
@@ -106,6 +108,12 @@ static const char *gpu_shader_get_name(const int feature, const int dimensions)
           "node_tex_voronoi_distance_to_edge_3d",
           "node_tex_voronoi_distance_to_edge_4d",
       }[dimensions - 1];
+    case SHD_VORONOI_SMOOTH_DISTANCE_TO_EDGE:
+      return std::array{
+          "node_tex_voronoi_smooth_distance_to_edge_2d",
+          "node_tex_voronoi_smooth_distance_to_edge_3d",
+          "node_tex_voronoi_smooth_distance_to_edge_4d",
+      }[dimensions - 1];
     case SHD_VORONOI_N_SPHERE_RADIUS:
       return std::array{
           "node_tex_voronoi_n_sphere_radius_1d",
@@ -155,23 +163,30 @@ static void node_shader_update_tex_voronoi(bNodeTree *ntree, bNode *node)
       ntree,
       inExponentSock,
       storage.distance == SHD_VORONOI_MINKOWSKI && storage.dimensions != 1 &&
-          !ELEM(storage.feature, SHD_VORONOI_DISTANCE_TO_EDGE, SHD_VORONOI_N_SPHERE_RADIUS));
-  nodeSetSocketAvailability(ntree, inSmoothnessSock, storage.feature == SHD_VORONOI_SMOOTH_F1);
+          !ELEM(storage.feature, SHD_VORONOI_DISTANCE_TO_EDGE, SHD_VORONOI_SMOOTH_DISTANCE_TO_EDGE, SHD_VORONOI_N_SPHERE_RADIUS));
+  nodeSetSocketAvailability(
+      ntree,
+      inSmoothnessSock,
+      storage.feature == SHD_VORONOI_SMOOTH_F1 ||
+        storage.feature == SHD_VORONOI_SMOOTH_DISTANCE_TO_EDGE);
 
   nodeSetSocketAvailability(
       ntree, outDistanceSock, storage.feature != SHD_VORONOI_N_SPHERE_RADIUS);
   nodeSetSocketAvailability(ntree,
                             outColorSock,
                             storage.feature != SHD_VORONOI_DISTANCE_TO_EDGE &&
+                              storage.feature != SHD_VORONOI_SMOOTH_DISTANCE_TO_EDGE &&
                                 storage.feature != SHD_VORONOI_N_SPHERE_RADIUS);
   nodeSetSocketAvailability(ntree,
                             outPositionSock,
                             storage.feature != SHD_VORONOI_DISTANCE_TO_EDGE &&
+                              storage.feature != SHD_VORONOI_SMOOTH_DISTANCE_TO_EDGE &&
                                 storage.feature != SHD_VORONOI_N_SPHERE_RADIUS &&
                                 storage.dimensions != 1);
   nodeSetSocketAvailability(ntree,
                             outWSock,
                             storage.feature != SHD_VORONOI_DISTANCE_TO_EDGE &&
+                              storage.feature != SHD_VORONOI_SMOOTH_DISTANCE_TO_EDGE &&
                                 storage.feature != SHD_VORONOI_N_SPHERE_RADIUS &&
                                 (ELEM(storage.dimensions, 1, 4)));
   nodeSetSocketAvailability(ntree, outRadiusSock, storage.feature == SHD_VORONOI_N_SPHERE_RADIUS);
@@ -1139,12 +1154,16 @@ class VoronoiEdgeFunction : public fn::MultiFunction {
   VoronoiEdgeFunction(int dimensions, int feature) : dimensions_(dimensions), feature_(feature)
   {
     BLI_assert(dimensions >= 1 && dimensions <= 4);
-    BLI_assert(feature >= 3 && feature <= 4);
-    static std::array<fn::MFSignature, 8> signatures{
+    BLI_assert(feature >= 3 && feature <= 5);
+    static std::array<fn::MFSignature, 11> signatures{
         create_signature(1, SHD_VORONOI_DISTANCE_TO_EDGE),
         create_signature(2, SHD_VORONOI_DISTANCE_TO_EDGE),
         create_signature(3, SHD_VORONOI_DISTANCE_TO_EDGE),
         create_signature(4, SHD_VORONOI_DISTANCE_TO_EDGE),
+
+        create_signature(2, SHD_VORONOI_SMOOTH_DISTANCE_TO_EDGE),
+        create_signature(3, SHD_VORONOI_SMOOTH_DISTANCE_TO_EDGE),
+        create_signature(4, SHD_VORONOI_SMOOTH_DISTANCE_TO_EDGE),
 
         create_signature(1, SHD_VORONOI_N_SPHERE_RADIUS),
         create_signature(2, SHD_VORONOI_N_SPHERE_RADIUS),
@@ -1165,9 +1184,12 @@ class VoronoiEdgeFunction : public fn::MultiFunction {
       signature.single_input<float>("W");
     }
     signature.single_input<float>("Scale");
+    if (feature == SHD_VORONOI_SMOOTH_DISTANCE_TO_EDGE) {
+      signature.single_input<float>("Smoothness");
+    }
     signature.single_input<float>("Randomness");
 
-    if (feature == SHD_VORONOI_DISTANCE_TO_EDGE) {
+    if (ELEM(feature, SHD_VORONOI_DISTANCE_TO_EDGE, SHD_VORONOI_SMOOTH_DISTANCE_TO_EDGE)) {
       signature.single_output<float>("Distance");
     }
     if (feature == SHD_VORONOI_N_SPHERE_RADIUS) {
@@ -1187,6 +1209,9 @@ class VoronoiEdgeFunction : public fn::MultiFunction {
     };
     auto get_scale = [&](int param_index) -> VArray<float> {
       return params.readonly_single_input<float>(param_index, "Scale");
+    };
+    auto get_smoothness = [&](int param_index) -> VArray<float> {
+      return params.readonly_single_input<float>(param_index, "Smoothness");
     };
     auto get_randomness = [&](int param_index) -> VArray<float> {
       return params.readonly_single_input<float>(param_index, "Randomness");
@@ -1229,6 +1254,7 @@ class VoronoiEdgeFunction : public fn::MultiFunction {
       case 2: {
         const VArray<float3> &vector = get_vector(param++);
         const VArray<float> &scale = get_scale(param++);
+        const VArray<float> &smoothness =  get_smoothness(param++);
         const VArray<float> &randomness = get_randomness(param++);
         switch (feature_) {
           case SHD_VORONOI_DISTANCE_TO_EDGE: {
@@ -1237,6 +1263,16 @@ class VoronoiEdgeFunction : public fn::MultiFunction {
               const float rand = std::min(std::max(randomness[i], 0.0f), 1.0f);
               const float2 p = float2(vector[i].x, vector[i].y) * scale[i];
               noise::voronoi_distance_to_edge(p, rand, &r_distance[i]);
+            }
+            break;
+          }
+          case SHD_VORONOI_SMOOTH_DISTANCE_TO_EDGE: {
+            MutableSpan<float> r_distance = get_r_distance(param++);
+            for (int64_t i : mask) {
+              const float smth = std::min(std::max(smoothness[i] / 2.0f, 0.0f), 0.5f);
+              const float rand = std::min(std::max(randomness[i], 0.0f), 1.0f);
+              const float2 p = float2(vector[i].x, vector[i].y) * scale[i];
+              noise::voronoi_smooth_distance_to_edge(p, smth, rand, &r_distance[i]);
             }
             break;
           }
@@ -1255,6 +1291,7 @@ class VoronoiEdgeFunction : public fn::MultiFunction {
       case 3: {
         const VArray<float3> &vector = get_vector(param++);
         const VArray<float> &scale = get_scale(param++);
+        const VArray<float> &smoothness = get_smoothness(param++);
         const VArray<float> &randomness = get_randomness(param++);
         switch (feature_) {
           case SHD_VORONOI_DISTANCE_TO_EDGE: {
@@ -1262,6 +1299,15 @@ class VoronoiEdgeFunction : public fn::MultiFunction {
             for (int64_t i : mask) {
               const float rand = std::min(std::max(randomness[i], 0.0f), 1.0f);
               noise::voronoi_distance_to_edge(vector[i] * scale[i], rand, &r_distance[i]);
+            }
+            break;
+          }
+          case SHD_VORONOI_SMOOTH_DISTANCE_TO_EDGE: {
+            MutableSpan<float> r_distance = get_r_distance(param++);
+            for (int64_t i : mask) {
+              const float smth = std::min(std::max(smoothness[i] / 2.0f, 0.0f), 0.5f);
+              const float rand = std::min(std::max(randomness[i], 0.0f), 1.0f);
+              noise::voronoi_smooth_distance_to_edge(vector[i] * scale[i], smth, rand, &r_distance[i]);
             }
             break;
           }
@@ -1280,6 +1326,7 @@ class VoronoiEdgeFunction : public fn::MultiFunction {
         const VArray<float3> &vector = get_vector(param++);
         const VArray<float> &w = get_w(param++);
         const VArray<float> &scale = get_scale(param++);
+        const VArray<float> &smoothness = get_smoothness(param++);
         const VArray<float> &randomness = get_randomness(param++);
         switch (feature_) {
           case SHD_VORONOI_DISTANCE_TO_EDGE: {
@@ -1288,6 +1335,16 @@ class VoronoiEdgeFunction : public fn::MultiFunction {
               const float rand = std::min(std::max(randomness[i], 0.0f), 1.0f);
               const float4 p = float4(vector[i].x, vector[i].y, vector[i].z, w[i]) * scale[i];
               noise::voronoi_distance_to_edge(p, rand, &r_distance[i]);
+            }
+            break;
+          }
+          case SHD_VORONOI_SMOOTH_DISTANCE_TO_EDGE: {
+            MutableSpan<float> r_distance = get_r_distance(param++);
+            for (int64_t i : mask) {
+              const float smth = std::min(std::max(smoothness[i] / 2.0f, 0.0f), 0.5f);
+              const float rand = std::min(std::max(randomness[i], 0.0f), 1.0f);
+              const float4 p = float4(vector[i].x, vector[i].y, vector[i].z, w[i]) * scale[i];
+              noise::voronoi_smooth_distance_to_edge(p, smth, rand, &r_distance[i]);
             }
             break;
           }
@@ -1317,9 +1374,9 @@ static void sh_node_voronoi_build_multi_function(blender::nodes::NodeMultiFuncti
   const NodeTexVoronoi &storage = node_storage(builder.node());
   bool minowski =
       (storage.distance == SHD_VORONOI_MINKOWSKI && storage.dimensions != 1 &&
-       !ELEM(storage.feature, SHD_VORONOI_DISTANCE_TO_EDGE, SHD_VORONOI_N_SPHERE_RADIUS));
+       !ELEM(storage.feature, SHD_VORONOI_DISTANCE_TO_EDGE, SHD_VORONOI_SMOOTH_DISTANCE_TO_EDGE, SHD_VORONOI_N_SPHERE_RADIUS));
   bool dist_radius = ELEM(
-      storage.feature, SHD_VORONOI_DISTANCE_TO_EDGE, SHD_VORONOI_N_SPHERE_RADIUS);
+      storage.feature, SHD_VORONOI_DISTANCE_TO_EDGE, SHD_VORONOI_SMOOTH_DISTANCE_TO_EDGE, SHD_VORONOI_N_SPHERE_RADIUS);
   if (dist_radius) {
     builder.construct_and_set_matching_fn<VoronoiEdgeFunction>(storage.dimensions,
                                                                storage.feature);
