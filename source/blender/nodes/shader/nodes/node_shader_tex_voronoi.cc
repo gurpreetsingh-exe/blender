@@ -1369,7 +1369,7 @@ class VoronoiEdgeFunction : public fn::MultiFunction {
   }
 };
 
-static void sh_node_voronoi_build_multi_function(blender::nodes::NodeMultiFunctionBuilder &builder)
+static void sh_node_voronoi_build_multi_function(NodeMultiFunctionBuilder &builder)
 {
   const NodeTexVoronoi &storage = node_storage(builder.node());
   bool minowski =
